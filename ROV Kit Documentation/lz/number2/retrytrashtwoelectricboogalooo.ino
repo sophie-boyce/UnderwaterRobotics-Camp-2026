@@ -132,7 +132,7 @@ extern "C" uint32_t set_arm_clock(uint32_t frequency); // required prototype
 // ----------------- Motor configuration ------------------ //
 
 // ESC to motor wiring as described in instructions
-// #define GripperMot 0
+#define GripperMot 0
 #define LUpDownMot 1
 #define RUpDownMot 2
 #define LForAftMot 3
@@ -269,6 +269,7 @@ float button_inc = 0.03;
 int motors[NMOTORS];    // motor command values 0=full reverse, FF=full fwd
 int servos[NSERVOS];    // servo command values 0=full CCW, FF=full CW
 int switches[NSWITCHES];  // on/off switches based on buttons held down
+
 
 bool slow_mode_enabled = false;
 bool lbRbComboWasPressed = false;
@@ -612,6 +613,22 @@ bool joystickConnected(void) {
          hid_driver_active[0] || hid_driver_active[1] || hid_driver_active[2] || hid_driver_active[3];
 }
 
+///////////////
+// Older Robot is Default
+
+bool ljRjComboWasPressed = false, robot_toggle_enabled = false;
+
+void updateRobotToggle(void) {
+  bool ljRjComboPressed = buttons[LJButton] && buttons[RJButton];
+  if (ljRjComboPressed && !ljRjComboWasPressed) {
+    robot_toggle_enabled = !robot_toggle_enabled;
+    ljRjComboWasPressed = true;
+  }
+  if (!ComboPressed) {
+    ljRjComboWasPressed = false;
+  }
+}
+
 /*
 Purpose:
 Clears accumulated PID state for depth hold.
@@ -849,7 +866,16 @@ void translate_controls_to_commands() {
 
   // calculate motor speed for each motor output
   // Also limit the values to valid PWM range 
-  // motors[GripperMot] = Pwm0 + lims((int)(Gripper  *motDirs[GripperMot]*motScale));
+
+  // not enabled is old enabled is new
+  if (!robot_toggle_enabled) {
+    motors[GripperMot] = Pwm0 + lims((int)(Gripper  *motDirs[GripperMot]*motScale));
+    servos[2] = 0;
+  } else {
+    motors[GripperMot] = 0;
+    servos[2] = Pwm0 + lims((int)(Gripper * motDirs[GripperMot] * motScale)); //  gripper servo
+  }
+  
   motors[LUpDownMot] = Pwm0 + lims((int)(LUpDown  *motDirs[LUpDownMot]*motScale));
   motors[RUpDownMot] = Pwm0 + lims((int)(RUpDown  *motDirs[RUpDownMot]*motScale));
   motors[LForAftMot] = Pwm0 + lims((int)(LRForeAft*motDirs[LForAftMot]*motScale));
@@ -859,7 +885,6 @@ void translate_controls_to_commands() {
   // the servos use the D pad buttons for camera tilt and brightness
   servos[0] = Pwm0 + lims((int)(analogs[DPadX] * motScale));  // LED dimming
   servos[1] = Pwm0 + lims((int)(-analogs[DPadY] * motScale));  // camera tilt servo
-  servos[2] = Pwm0 + lims((int)(Gripper * motDirs[GripperMot] * motScale)); //  gripper servo
 }
 
 
@@ -1012,11 +1037,11 @@ motDirs[StrafeMot]  = StrafeMotDir;
   lcd.begin(20,4);    // LCD size
   lcd.clear();  
   lcd.setCursor(0, 0);
-  lcd.print("   ROVotron Cadet  ");    // display splash screen
+  lcd.print("     Duckzilla  ");    // display splash screen
   lcd.setCursor(0, 1);
-  lcd.print(" ROV Control System");
+  lcd.print(" Powered by the best SWEs");
   lcd.setCursor(0, 3);
-  lcd.print("     Rev. 1.21");
+  lcd.print("     Ver. Lucas 2.67");
 //  Serial.println("LCD should be alive");
   delay(1500);
   lcd.clear();
