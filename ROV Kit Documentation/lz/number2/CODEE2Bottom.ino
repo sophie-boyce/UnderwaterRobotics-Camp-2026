@@ -392,7 +392,7 @@ void loop() {
 
       if (!st) {
         robotToggleEnabled = servos
-        if (servos[0] < 50) {
+        if (servos[2] < 50) {
           robotToggleEnabled = 0;
         } else {
           robotToggleEnabled = 1;
