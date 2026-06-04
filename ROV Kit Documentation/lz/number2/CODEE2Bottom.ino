@@ -18,7 +18,7 @@
 //==============================================================================
 
 #define NMOTORS 6
-#define NSERVOS 3
+#define NSERVOS 4
 #define NVOLTS 6
 
 #define SERIAL_BAUD 115200
@@ -50,6 +50,9 @@
 #define MOTOR3_PIN 5
 #define MOTOR4_PIN 6
 #define MOTOR5_PIN 7
+
+#define GRIP1_PIN 9
+#define GRIP2_PIN 10
 
 // SERVO1 is Camera SERVO2 is Gripper
 #define SERVO1_PIN 21
@@ -391,8 +394,8 @@ void loop() {
       st = parse_command_msg(command_msg, motors, servos);
 
       if (!st) {
-        robotToggleEnabled = servos
-        if (servos[2] < 50) {
+        // servos[3] is not a servo, it is just used to communicate which robot is being used
+        if (servos[3] == 0) {
           robotToggleEnabled = 0;
         } else {
           robotToggleEnabled = 1;
