@@ -627,6 +627,25 @@ void applySlewRate(float dtSeconds) {
   analogs[RJoyY] = limitRateOfChange(analogs[RJoyY], requestedAnalogs[RJoyY] * scale, accelRate, decelRate, dtSeconds);
 }
 
+
+///////////////
+// Older Robot is Default
+
+bool ljRjComboWasPressed = false, robot_toggle_enabled = false;
+
+void updateRobotToggle(void) {
+  bool ljRjComboPressed = buttons[LJButton] && buttons[RJButton];
+  if (ljRjComboPressed && !ljRjComboWasPressed) {
+    robot_toggle_enabled = !robot_toggle_enabled;
+    ljRjComboWasPressed = true;
+  }
+  if (!ComboPressed) {
+    ljRjComboWasPressed = false;
+  }
+}
+
+
+
 /*
 Purpose:
 Limits a floating-point value to a safe numeric range.
@@ -906,6 +925,12 @@ void translate_controls_to_commands() {
   servos[0] = Pwm0 + lims((int)(analogs[DPadX] * motScale));  // LED dimming
   servos[1] = Pwm0 + lims((int)(-analogs[DPadY] * motScale));  // camera tilt servo
   servos[2] = Pwm0 + lims((int)(Gripper  *motDirs[GripperMot]*motScale));
+
+  if (!robot_toggle_enabled) {
+      NSERVOS = 2;
+  } else {
+    NSERVOS = 3;
+  }
 }
 
 
