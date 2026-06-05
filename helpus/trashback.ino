@@ -1,6 +1,6 @@
 
 /* 
-Rovotron Cadet RVCBOT-D control receiver program 
+Rovotron Cadet RVCBOT-D control receiver program
 
 Controls ROV motors, switches, servos using RS-485 link with a 
 hex ASCII command message and a reply message with telemetry.
