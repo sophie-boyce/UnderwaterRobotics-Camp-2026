@@ -839,11 +839,11 @@ Notes:
 Thruster mapping and gain behavior are intentionally unchanged.
 */
 void translate_controls_to_commands() {
-  float LRForeAft = analogs[LJoyY]*DriveGainL + analogs[RJoyX]*SteerGain;
-  float RRForeAft = analogs[LJoyY]*DriveGainR - analogs[RJoyX]*SteerGain;
-  float Strafe    = analogs[LJoyX]*StrafeGain;
-  float LUpDown   = analogs[RJoyY]*DiveGainL;
-  float RUpDown   = analogs[RJoyY]*DiveGainR;
+  float LRForeAft = analogs[RJoyY]*DriveGainL + analogs[LJoyX]*SteerGain;
+  float RRForeAft = analogs[RJoyY]*DriveGainR - analogs[LJoyX]*SteerGain;
+  float Strafe    = analogs[RJoyX]*StrafeGain;
+  float LUpDown   = analogs[LJoyY]*DiveGainL;
+  float RUpDown   = analogs[LJoyY]*DiveGainR;
   // gripper uses both of the triggers
   float Gripper   = (analogs[RTrig] - analogs[LTrig])*GripperGain;
 
