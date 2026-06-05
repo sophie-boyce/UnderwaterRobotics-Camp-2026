@@ -417,7 +417,7 @@ void applyActuatorCommands(void) {
   motor3.writeMicroseconds(motor_scale(motors[3]));
   motor4.writeMicroseconds(motor_scale(motors[4]));
   motor5.writeMicroseconds(motor_scale(motors[5]));
-  servo1.writeMicroseconds(servo_scale(servos[1]));
+  // servo1.writeMicroseconds(servo_scale(servos[1]));
   grip = motors[0] - 128;
   if (grip < 0) {
     grip2 = 1 + grip * 2;
@@ -429,7 +429,7 @@ void applyActuatorCommands(void) {
   // analogWrite(GRIP1_PIN, grip1);
   // analogWrite(GRIP2_PIN, grip2);
   analogWrite(DIM_PIN, servos[0]);
-  // analogWrite(SERVO1_PIN, servos[1]);
+  analogWrite(SERVO1_PIN, servos[1]);
 }
 
 /* ----------------- init code -------------------- */
