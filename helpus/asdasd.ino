@@ -581,8 +581,8 @@ void translate_controls_to_commands() {
   motors[StrafeMot ] = Pwm0 + lims((int)(Strafe   *motDirs[StrafeMot ]*motScale));
 
   // the servos use the D pad buttons for camera tilt and brightness
-  servos[0] = Pwm0 + lims((int)(analogs[DPadX] * motScale));  // LED dimming
-  servos[1] = Pwm0 + lims((int)(-analogs[DPadY] * motScale));  // camera tilt servo
+  servos[0] = Pwm0 + lims((int)((analogs[DPadX]+1) * motScale));  // LED dimming
+  servos[1] = Pwm0 + lims((int)(-(analogs[DPadY]+1) * motScale));  // camera tilt servo
 }
 
 
