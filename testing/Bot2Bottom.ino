@@ -85,9 +85,17 @@ float depthMeters;  // should be depth in meters
 #define MOTOR5_PIN   7
 #define GRIP1_PIN    9
 #define GRIP2_PIN   10
-#define CAMERA_TILT_PIN 17  // camera tilt analog PWM
-#define CLAW_SERVO_PIN  21  // claw/gripper positional servo
+#define CAMERA_TILT_PIN 17  // camera tilt output (see CAMERA_TILT_ANALOG)
+#define CLAW_SERVO_PIN  21  // claw RC servo (Servo library + rate limiting)
 #define DIM_PIN     22
+
+#define CLAW_UPDATE_MS 40      // Min ms between claw pulse updates.
+#define CLAW_MAX_US_STEP 25    // Max us change per update (anti-brownout).
+
+// 1 = PWM duty on pin 17. Set 0 while camera is unplugged.
+#define CAMERA_TILT_ENABLED 0
+#define CAMERA_TILT_ANALOG 1
+#define CAMERA_TILT_PWM_HZ 50
 
 // I2C bus
 #define SDA0_PIN    18
@@ -108,7 +116,7 @@ float depthMeters;  // should be depth in meters
 #define Pwm0 128
 #define CLAW_SERVO_US_MIN 1200
 #define CLAW_SERVO_US_MAX 1800
-#define BOTTOM_DEBUG_SERIAL 1
+#define BOTTOM_DEBUG_SERIAL 0
 
 //------------ GLOBAL VARIABLES AND RUNTIME STATE ------------------------------- //
 
@@ -358,10 +366,64 @@ int claw_servo_scale(int cmd) {
   return us;
 }
 
-void applySafeActuatorNeutral(void) {
-  clawServo.writeMicroseconds(claw_servo_scale(Pwm0));
-  analogWrite(DIM_PIN, Pwm0);
+#if CAMERA_TILT_ENABLED && !CAMERA_TILT_ANALOG
+Servo cameraServo;
+#endif
+
+static int clawCurrentUs = 1500;
+
+void writeClawServoUs(int pulseUs) {
+  clawCurrentUs = pulseUs;
+  clawServo.writeMicroseconds(pulseUs);
+}
+
+void initClawOutput(void) {
+  clawServo.attach(CLAW_SERVO_PIN);
+  writeClawServoUs(claw_servo_scale(Pwm0));
+}
+
+void applyClawOutput(int cmd) {
+  static unsigned long lastMs = 0;
+  unsigned long now = millis();
+  if (now - lastMs < CLAW_UPDATE_MS) return;
+  lastMs = now;
+
+  int targetUs = claw_servo_scale(cmd);
+  int delta = targetUs - clawCurrentUs;
+  if (delta > CLAW_MAX_US_STEP) delta = CLAW_MAX_US_STEP;
+  if (delta < -CLAW_MAX_US_STEP) delta = -CLAW_MAX_US_STEP;
+  writeClawServoUs(clawCurrentUs + delta);
+}
+
+void initCameraTiltOutput(void) {
+#if CAMERA_TILT_ENABLED
+#if CAMERA_TILT_ANALOG
+  pinMode(CAMERA_TILT_PIN, OUTPUT);
+  analogWriteFrequency(CAMERA_TILT_PIN, CAMERA_TILT_PWM_HZ);
   analogWrite(CAMERA_TILT_PIN, Pwm0);
+#else
+  cameraServo.attach(CAMERA_TILT_PIN);
+  cameraServo.writeMicroseconds(servo_scale(Pwm0));
+#endif
+#endif
+}
+
+void applyCameraTiltOutput(int cmd) {
+#if CAMERA_TILT_ENABLED
+#if CAMERA_TILT_ANALOG
+  analogWrite(CAMERA_TILT_PIN, cmd);
+#else
+  cameraServo.writeMicroseconds(servo_scale(cmd));
+#endif
+#endif
+}
+
+void applySafeActuatorNeutral(void) {
+  writeClawServoUs(claw_servo_scale(Pwm0));
+#if CAMERA_TILT_ENABLED
+  applyCameraTiltOutput(Pwm0);
+#endif
+  analogWrite(DIM_PIN, Pwm0);
 }
 
 
@@ -425,18 +487,19 @@ void runEscStartupSequence(void) {
 }
 
 void applyActuatorCommands(void) {
-  static int lastClawCmd = -1;
   motor1.writeMicroseconds(motor_scale(motors[1]));
   motor2.writeMicroseconds(motor_scale(motors[2]));
   motor3.writeMicroseconds(motor_scale(motors[3]));
   motor4.writeMicroseconds(motor_scale(motors[4]));
   motor5.writeMicroseconds(motor_scale(motors[5]));
-  if (motors[0] != lastClawCmd) {
-    clawServo.writeMicroseconds(claw_servo_scale(motors[0]));
-    lastClawCmd = motors[0];
+#if CAMERA_TILT_ENABLED
+  static int lastCameraCmd = -1;
+  if (servos[1] != lastCameraCmd) {
+    applyCameraTiltOutput(servos[1]);
+    lastCameraCmd = servos[1];
   }
+#endif
   analogWrite(DIM_PIN, servos[0]);
-  analogWrite(CAMERA_TILT_PIN, servos[1]);
 }
 
 /* ----------------- init code -------------------- */
@@ -460,7 +523,6 @@ void setup() {
   Serial1.begin(115200);             // tether port
   Serial1.transmitterEnable(TXE_PIN);   // RS-485 Tx enable  
   pinMode(DIM_PIN, OUTPUT);
-  pinMode(CAMERA_TILT_PIN, OUTPUT);
   analogReadResolution(12);
 
   motor1.attach(MOTOR1_PIN);  
@@ -468,13 +530,14 @@ void setup() {
   motor3.attach(MOTOR3_PIN);  
   motor4.attach(MOTOR4_PIN);  
   motor5.attach(MOTOR5_PIN);  
-  clawServo.attach(CLAW_SERVO_PIN);
+  initCameraTiltOutput();
 
   for (int i = 0; i < NMOTORS; i++) motors[i] = Pwm0;
   for (int i = 0; i < NSERVOS; i++) servos[i] = Pwm0;
-  applySafeActuatorNeutral();
 
   runEscStartupSequence();
+  initClawOutput();
+  applySafeActuatorNeutral();
   inPtr = command_msg;
   gotInString = false;
 #if BOTTOM_DEBUG_SERIAL
@@ -549,4 +612,5 @@ void loop() {
 #endif
     }
 	}
+  applyClawOutput(motors[0]);
 }
