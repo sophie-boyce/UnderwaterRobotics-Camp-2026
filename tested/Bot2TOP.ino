@@ -805,7 +805,10 @@ void translate_controls_to_commands() {
   float LRForeAft = analogs[LJoyY]*DriveGainL + analogs[RJoyX]*SteerGain;
   float RRForeAft = analogs[LJoyY]*DriveGainR - analogs[RJoyX]*SteerGain;
   float Strafe    = analogs[LJoyX]*StrafeGain;
+
+  // there might be an issue with the pitchTrim because you wouldn't want it as much if you're diving
   float pitchTrim = analogs[LJoyY] * DRIVE_PITCH_TRIM;
+  
   float LUpDown   = analogs[RJoyY]*DiveGainL + pitchTrim;
   float RUpDown   = analogs[RJoyY]*DiveGainR + pitchTrim;
   // gripper uses both of the triggers (slew-limited to reduce bottom brownout)
