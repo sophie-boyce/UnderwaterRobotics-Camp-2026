@@ -27,8 +27,6 @@ Revision history
 2023-11-19 DF  RVCBOT-C version has only 6 motors, tilt, dim
 2024-02-22 DF  Adding pressure to telem message
 
-2026-06-05 DF  Added servo for claw
-
 Functions:
  6 PWM motor outputs
  2 PWM servo outputs
@@ -53,6 +51,8 @@ The values transmitted are the raw ADC values.
 
 Things to do:
 
+3. Add better comm. error handling
+4. Devise a way to test error handling
 */
 
 //------------ INCLUDES AND LIBRARIES ------------------------------- //
@@ -86,11 +86,14 @@ float depthMeters;  // should be depth in meters
 #define GRIP1_PIN    9
 #define GRIP2_PIN   10
 #define CAMERA_TILT_PIN 17  // camera tilt output (see CAMERA_TILT_ANALOG)
-#define CLAW_SERVO_PIN  21  // claw RC servo (Servo library + rate limiting)
+#define CLAW_SERVO_PIN  21  // 5V claw RC servo — max-speed mode (no rate limit)
 #define DIM_PIN     22
 
-#define CLAW_UPDATE_MS 40      // Min ms between claw pulse updates.
-#define CLAW_MAX_US_STEP 25    // Max us change per update (anti-brownout).
+// 5V claw on pin 21 — safe range + moderate slew (prevents twitch/brownout).
+#define CLAW_SERVO_US_MIN 1000
+#define CLAW_SERVO_US_MAX 2000
+#define CLAW_UPDATE_MS 20
+#define CLAW_MAX_US_STEP 80
 
 // 1 = PWM duty on pin 17. Set 0 while camera is unplugged.
 #define CAMERA_TILT_ENABLED 0
@@ -114,8 +117,6 @@ float depthMeters;  // should be depth in meters
 #define PRESSURE_PIN  A6
 
 #define Pwm0 128
-#define CLAW_SERVO_US_MIN 1200
-#define CLAW_SERVO_US_MAX 1800
 #define BOTTOM_DEBUG_SERIAL 0
 
 //------------ GLOBAL VARIABLES AND RUNTIME STATE ------------------------------- //
@@ -370,7 +371,6 @@ int claw_servo_scale(int cmd) {
 Servo cameraServo;
 #endif
 
-//Code for Claw is seperate from the thrusters and camera servo but works in a similar manner
 static int clawCurrentUs = 1500;
 
 void writeClawServoUs(int pulseUs) {
@@ -393,9 +393,8 @@ void applyClawOutput(int cmd) {
   int delta = targetUs - clawCurrentUs;
   if (delta > CLAW_MAX_US_STEP) delta = CLAW_MAX_US_STEP;
   if (delta < -CLAW_MAX_US_STEP) delta = -CLAW_MAX_US_STEP;
-  writeClawServoUs(clawCurrentUs + delta);
+  if (delta != 0) writeClawServoUs(clawCurrentUs + delta);
 }
-//
 
 void initCameraTiltOutput(void) {
 #if CAMERA_TILT_ENABLED

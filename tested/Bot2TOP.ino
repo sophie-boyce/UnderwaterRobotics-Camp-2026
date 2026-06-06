@@ -28,33 +28,12 @@ Revision history
 2024-05-31 DF  Fixed USB declarations to compile with TeensyDuino 1.59
 2024-06-02 DF  Ver 1.20 - Added USB ID display at startup
 2024-06-09 DF  Ver 1.21 - added temp readout enable to Y button
-2026-06-03 DF  Ver 1.30 - Added Slew and fixed checksum errors
-2026-06-04 DF  Ver 1.31 - Added PID for Depth Hold and Slow Mode
-2026-06-05 DF  Ver 1.32 - Various Fixes and Added Servo Claw
 
-Known bugs: Camera Servo currently does not work
-Likely due to not enough power, as it is not connected to a 5V pin
+Known bugs:
 
 Things to do:
 
 Calibrate temp sensors
-
-Things you can add:
-
-Instead of using PID to hold depth, you can do a feed forward system which may be more stable
-Considering that there isn't a lot of current in the pools
-You can simply calculate the bouyancy force, pVg, and have the thrusters account for the constant force
-Or you can even use both, with feedforward as the baseline and PID to account for the environment
-
-If hardware allows, you can add an IMU and use the measurements from the gyroscope.
-Through this, you can add PID for 3 more degrees of freedom: roll pitch and yaw
-Ideally there should be no roll
-It could be useful to add a hold for pitch, but that might require different placement of the strafing motor
-PID for Yaw would make the robot drive straight
-
-If using multiple ROVs, it could also be possible to only use one Top controller for multiple ROVs
-Though the benefits may not worth the effort needed to achieve it
-It is usually also better to have different drivers for different ROVs
 
 Function:
 
@@ -136,8 +115,6 @@ extern "C" uint32_t set_arm_clock(uint32_t frequency); // required prototype
 
 
 #define SLOW_MODE_SCALE 0.4
-// max acceleration in slew
-// generally want acceleration to be higher to be more responsive
 #define ACCEL_RATE_NORMAL 2.5
 #define DECEL_RATE_NORMAL 6.0
 #define ACCEL_RATE_SLOW 1.0
@@ -149,7 +126,6 @@ extern "C" uint32_t set_arm_clock(uint32_t frequency); // required prototype
 #define DEPTH_HOLD_ERROR_BLEND 0.20f // Soft ramp above deadband (feet) — avoids hard on/off twitch
 #define DEPTH_RATE_DEADBAND 0.08f  // Ignore tiny depth-rate noise for D-term (ft/s)
 #define DEPTH_HOLD_ACTIVATION_DELAY_MS 750
-// PID Constants
 #define MAX_VERTICAL_PID_OUTPUT 0.18f
 #define DEPTH_KP 0.20f
 #define DEPTH_KI 0.005f
@@ -165,7 +141,6 @@ extern "C" uint32_t set_arm_clock(uint32_t frequency); // required prototype
 #define DEPTH_FEET_PER_VOLT 90.0f
 #define DEPTH_DISPLAY_OFFSET_FT 42.7f   // LCD zero at surface (was -1.3 ft with 44.0)
 #define DEPTH_PID_OUTPUT_SIGN (-1.0f)
-// Integral term is what keeps the robot in steady state(or holding depth) when the error is 0(or in the right position)
 #define DEPTH_INTEGRAL_MAX 1.0f   // Anti-windup clamp for depth-hold integral term.
 #define DPAD_AXIS_STEP 0.03f
 #define CAMERA_DPAD_STEP 0.12f
@@ -201,14 +176,13 @@ float motDirs[NMOTORS];
 // and to have the desired steering and strafing behavior
 float DriveGainL  = 0.60;
 float DriveGainR  = 0.60;
-float SteerGain   = 0.60;
+float SteerGain   = -0.60;   // must match this ROV wiring (was +0.60 — broke turning)
 float DiveGainL   = 0.60;
 float DiveGainR   = 0.60;
-float StrafeGain  = 0.58;   // was 0.50
-// Counter nose-up when driving forward (claw/drag forward of CG). Flip sign if wrong way.
+float StrafeGain  = 0.58;
 #define DRIVE_PITCH_TRIM (-0.12f)
-float GripperGain = 0.35;   // reduced + bottom slew limits claw inrush current
-#define GRIPPER_SLEW_STEP 0.025f
+#define GRIPPER_TRIGGER_ON 0.18f   // ignore trigger noise below this
+#define GRIPPER_STEP 0.07f         // move/sec factor per loop (~20 Hz) at full trigger
 
 // make the fast LCD screen object - uses RW to allow readback of screen contents
 LiquidCrystalFast lcd(LCD_RS, LCD_RW, LCD_E, LCD_D4, LCD_D5, LCD_D6, LCD_D7);
@@ -354,8 +328,7 @@ float telems[NVOLTS];     // telemetry in its units
 // Depth is 0.5V = 1 atm, 58 PSI/V, H2O is 0.42 lb/ft depth
 // volts[1] is degC H2O, zero is 0C, scale is 1/128
 
-// Temp scale needs caculattion...
-// Pressure Sensor and Depth have to calibrated
+// Temp scale needs caclualtion...
 //    signal              tether   ana1   ana2    ana3    ana4    press
 //    measurement         Battery  H2Otemp not  LEDtemp   ---    Depth
 //    units                Volts    degC   used   degC    --      Feet
@@ -366,7 +339,6 @@ float depthFeetFromPressureVolts(float pressureVolts) {
   return (pressureVolts - DEPTH_SURFACE_VOLT) * DEPTH_FEET_PER_VOLT;
 }
 
-// PID will not run when error is within deadband
 float applyDepthErrorDeadband(float errorFeet) {
   float magnitude = fabsf(errorFeet);
   if (magnitude <= DEPTH_HOLD_DEADBAND) return 0.0f;
@@ -593,7 +565,6 @@ int findActiveGamepadIndex(void) {
   return -1;
 }
 
-// Slew
 float limitRateOfChange(float current, float target, float accelRate, float decelRate, float dtSeconds) {
   float rate = accelRate;
   if ((current > 0.0 && target < current) || (current < 0.0 && target > current)) {
@@ -610,7 +581,6 @@ float limitRateOfChange(float current, float target, float accelRate, float dece
   return target;
 }
 
-//Gets New Press
 void updateSlowModeToggle(void) {
   bool lbRbComboPressed = buttons[LButton] && buttons[RButton];
   if (lbRbComboPressed && !lbRbComboWasPressed) {
@@ -634,7 +604,6 @@ bool joystickConnected(void) {
          hid_driver_active[0] || hid_driver_active[1] || hid_driver_active[2] || hid_driver_active[3];
 }
 
-//Error and values dependent on error have to reset
 void resetDepthHoldPid(void) {
   depthIntegral = 0.0;
   previousDepthError = 0.0;
@@ -705,9 +674,6 @@ void updateDepthHoldAssist(float dtSeconds) {
   if (fabsf(depthRate) < DEPTH_RATE_DEADBAND) depthRate = 0.0f;
   filteredDepthRate = filteredDepthRate * (1.0f - DEPTH_RATE_FILTER_ALPHA)
                     + depthRate * DEPTH_RATE_FILTER_ALPHA;
-
-  // taking the absolute value of the error only works because the error is only coming from the bouyancy force.
-  // As a result, the compensation is only directed downwards
 
   if (fabsf(error) > DEPTH_HOLD_DEADBAND) {
     depthIntegral += errorForPid * dtSeconds;
@@ -822,22 +788,18 @@ void translate_controls_to_commands() {
   float LRForeAft = analogs[LJoyY]*DriveGainL + analogs[RJoyX]*SteerGain;
   float RRForeAft = analogs[LJoyY]*DriveGainR - analogs[RJoyX]*SteerGain;
   float Strafe    = analogs[LJoyX]*StrafeGain;
-
-  // there might be an issue with the pitchTrim because you wouldn't want it as much if you're diving
   float pitchTrim = analogs[LJoyY] * DRIVE_PITCH_TRIM;
-  
   float LUpDown   = analogs[RJoyY]*DiveGainL + pitchTrim;
   float RUpDown   = analogs[RJoyY]*DiveGainR + pitchTrim;
-  // gripper uses both of the triggers (slew-limited to reduce bottom brownout)
-  float Gripper   = (analogs[RTrig] - analogs[LTrig]) * GripperGain;
-  float gripDelta = Gripper - gripperCmd;
-  if (gripDelta > GRIPPER_SLEW_STEP) gripperCmd += GRIPPER_SLEW_STEP;
-  else if (gripDelta < -GRIPPER_SLEW_STEP) gripperCmd -= GRIPPER_SLEW_STEP;
-  else gripperCmd = Gripper;
-
-  // calculate motor speed for each motor output
-  // Also limit the values to valid PWM range 
-  motors[GripperMot] = Pwm0 + lims((int)(gripperCmd * motDirs[GripperMot] * motScale));
+  // Claw: RT/LT step open/close while held; position latched on release (no snap to center).
+  if (analogs[RTrig] > GRIPPER_TRIGGER_ON) {
+    gripperCmd += GRIPPER_STEP * analogs[RTrig];
+  } else if (analogs[LTrig] > GRIPPER_TRIGGER_ON) {
+    gripperCmd -= GRIPPER_STEP * analogs[LTrig];
+  }
+  if (gripperCmd > 1.0f) gripperCmd = 1.0f;
+  if (gripperCmd < -1.0f) gripperCmd = -1.0f;
+  motors[GripperMot] = Pwm0 + lims((int)(gripperCmd * motDirs[GripperMot] * 127.0f));
   motors[LUpDownMot] = Pwm0 + lims((int)(LUpDown  *motDirs[LUpDownMot]*motScale));
   motors[RUpDownMot] = Pwm0 + lims((int)(RUpDown  *motDirs[RUpDownMot]*motScale));
   motors[LForAftMot] = Pwm0 + lims((int)(LRForeAft*motDirs[LForAftMot]*motScale));
@@ -1035,3 +997,5 @@ void loop() {
 #endif
   }
 }
+
+	     
