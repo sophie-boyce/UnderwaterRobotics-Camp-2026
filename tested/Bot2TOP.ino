@@ -28,8 +28,12 @@ Revision history
 2024-05-31 DF  Fixed USB declarations to compile with TeensyDuino 1.59
 2024-06-02 DF  Ver 1.20 - Added USB ID display at startup
 2024-06-09 DF  Ver 1.21 - added temp readout enable to Y button
+2026-06-03 DF  Ver 1.30 - Added Slew and fixed checksum errors
+2026-06-04 DF  Ver 1.31 - Added PID for Depth Hold and Slow Mode
+2026-06-05 DF  Ver 1.32 - Various Fixes and Added Servo Claw
 
-Known bugs:
+Known bugs: Camera Servo currently does not work
+Likely due to not enough power, as it is not connected to a 5V pin
 
 Things to do:
 
@@ -115,6 +119,8 @@ extern "C" uint32_t set_arm_clock(uint32_t frequency); // required prototype
 
 
 #define SLOW_MODE_SCALE 0.4
+// max acceleration in slew
+// generally want acceleration to be higher to be more responsive
 #define ACCEL_RATE_NORMAL 2.5
 #define DECEL_RATE_NORMAL 6.0
 #define ACCEL_RATE_SLOW 1.0
@@ -126,6 +132,7 @@ extern "C" uint32_t set_arm_clock(uint32_t frequency); // required prototype
 #define DEPTH_HOLD_ERROR_BLEND 0.20f // Soft ramp above deadband (feet) — avoids hard on/off twitch
 #define DEPTH_RATE_DEADBAND 0.08f  // Ignore tiny depth-rate noise for D-term (ft/s)
 #define DEPTH_HOLD_ACTIVATION_DELAY_MS 750
+// PID Constants
 #define MAX_VERTICAL_PID_OUTPUT 0.18f
 #define DEPTH_KP 0.20f
 #define DEPTH_KI 0.005f
@@ -141,6 +148,7 @@ extern "C" uint32_t set_arm_clock(uint32_t frequency); // required prototype
 #define DEPTH_FEET_PER_VOLT 90.0f
 #define DEPTH_DISPLAY_OFFSET_FT 42.7f   // LCD zero at surface (was -1.3 ft with 44.0)
 #define DEPTH_PID_OUTPUT_SIGN (-1.0f)
+// Integral term is what keeps the robot in steady state(or holding depth) when the error is 0(or in the right position)
 #define DEPTH_INTEGRAL_MAX 1.0f   // Anti-windup clamp for depth-hold integral term.
 #define DPAD_AXIS_STEP 0.03f
 #define CAMERA_DPAD_STEP 0.12f
@@ -329,7 +337,8 @@ float telems[NVOLTS];     // telemetry in its units
 // Depth is 0.5V = 1 atm, 58 PSI/V, H2O is 0.42 lb/ft depth
 // volts[1] is degC H2O, zero is 0C, scale is 1/128
 
-// Temp scale needs caclualtion...
+// Temp scale needs caculattion...
+// Pressure Sensor and Depth have to calibrated
 //    signal              tether   ana1   ana2    ana3    ana4    press
 //    measurement         Battery  H2Otemp not  LEDtemp   ---    Depth
 //    units                Volts    degC   used   degC    --      Feet
@@ -340,6 +349,7 @@ float depthFeetFromPressureVolts(float pressureVolts) {
   return (pressureVolts - DEPTH_SURFACE_VOLT) * DEPTH_FEET_PER_VOLT;
 }
 
+// PID will not run when error is within deadband
 float applyDepthErrorDeadband(float errorFeet) {
   float magnitude = fabsf(errorFeet);
   if (magnitude <= DEPTH_HOLD_DEADBAND) return 0.0f;
@@ -566,6 +576,7 @@ int findActiveGamepadIndex(void) {
   return -1;
 }
 
+// Slew
 float limitRateOfChange(float current, float target, float accelRate, float decelRate, float dtSeconds) {
   float rate = accelRate;
   if ((current > 0.0 && target < current) || (current < 0.0 && target > current)) {
@@ -582,6 +593,7 @@ float limitRateOfChange(float current, float target, float accelRate, float dece
   return target;
 }
 
+//Gets New Press
 void updateSlowModeToggle(void) {
   bool lbRbComboPressed = buttons[LButton] && buttons[RButton];
   if (lbRbComboPressed && !lbRbComboWasPressed) {
@@ -605,6 +617,7 @@ bool joystickConnected(void) {
          hid_driver_active[0] || hid_driver_active[1] || hid_driver_active[2] || hid_driver_active[3];
 }
 
+//Error and values dependent on error have to reset
 void resetDepthHoldPid(void) {
   depthIntegral = 0.0;
   previousDepthError = 0.0;
@@ -675,6 +688,9 @@ void updateDepthHoldAssist(float dtSeconds) {
   if (fabsf(depthRate) < DEPTH_RATE_DEADBAND) depthRate = 0.0f;
   filteredDepthRate = filteredDepthRate * (1.0f - DEPTH_RATE_FILTER_ALPHA)
                     + depthRate * DEPTH_RATE_FILTER_ALPHA;
+
+  // taking the absolute value of the error only works because the error is only coming from the bouyancy force.
+  // As a result, the compensation is only directed downwards
 
   if (fabsf(error) > DEPTH_HOLD_DEADBAND) {
     depthIntegral += errorForPid * dtSeconds;
@@ -999,5 +1015,3 @@ void loop() {
 #endif
   }
 }
-
-	     
